@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Consulta TIVA vs gases</title>
+  <script src="config.js"></script>
   <style>
     :root { --bg:#f4f7fb; --card:#fff; --text:#1c2430; --muted:#64748b; --primary:#0f766e; --primary-dark:#115e59; --border:#d8e0ea; --danger:#b91c1c; --ok:#15803d; }
     body { margin:0; font-family:Arial, Helvetica, sans-serif; background:var(--bg); color:var(--text); }
@@ -22,6 +23,7 @@
     select { width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:white; margin-top:8px; box-sizing:border-box; }
     .barrier-select { display:none; }
     button { border:none; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer; margin-top:12px; }
+    button:disabled { opacity:.65; cursor:not-allowed; }
     .primary { background:var(--primary); color:white; }
     .primary:hover { background:var(--primary-dark); }
     .secondary { background:#e2e8f0; color:#0f172a; margin-left:8px; }
@@ -143,10 +145,43 @@
       }
     }
 
-    document.getElementById("surveyForm").addEventListener("submit", function(e) {
+    function buildPayload(center) {
+      return {
+        id_anonimo: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        fecha: new Date().toISOString(),
+        centro: center,
+        respuestas: clinicalCases.map((caseText, idx) => {
+          const selected = document.querySelector(`input[name="case_${idx}"]:checked`);
+          const barrier = document.getElementById(`barrier_${idx}`).value;
+          return {
+            caso: idx + 1,
+            descripcion: caseText,
+            tecnica: selected.value,
+            barrera: selected.value === "TIVA" ? "" : barrier
+          };
+        })
+      };
+    }
+
+    async function submitToBackend(payload) {
+      const backendUrl = window.SURVEY_BACKEND_URL || "";
+      if (!backendUrl) {
+        throw new Error("Backend no configurado. Falta pegar la URL de Google Apps Script en public/config.js.");
+      }
+
+      await fetch(backendUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "submit", payload })
+      });
+    }
+
+    document.getElementById("surveyForm").addEventListener("submit", async function(e) {
       e.preventDefault();
       const alert = document.getElementById("formAlert");
       const center = document.getElementById("centerSelect").value;
+      const submitButton = this.querySelector('button[type="submit"]');
 
       if (!center) {
         alert.textContent = "Debe seleccionar un centro.";
@@ -171,10 +206,21 @@
         }
       }
 
-      alert.style.display = "none";
-      document.getElementById("formBlock").classList.add("hidden");
-      document.getElementById("successMessage").style.display = "block";
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      try {
+        alert.style.display = "none";
+        submitButton.disabled = true;
+        submitButton.textContent = "Enviando...";
+        await submitToBackend(buildPayload(center));
+        document.getElementById("formBlock").classList.add("hidden");
+        document.getElementById("successMessage").style.display = "block";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (error) {
+        alert.textContent = error.message || "No se pudo registrar la respuesta. Intente nuevamente.";
+        alert.style.display = "block";
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "Enviar encuesta";
+      }
     });
 
     function clearForm() {

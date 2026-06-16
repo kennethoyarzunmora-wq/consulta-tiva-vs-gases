@@ -6,6 +6,9 @@ Proyecto inicial para una consulta anónima sobre elección de TIVA versus gases
 
 - `public/index.html`: consulta anónima para anestesiólogos. No muestra resultados ni permite copiar/descargar datos.
 - `admin/dashboard.html`: panel privado para análisis agregado y visualización de resultados.
+- `public/config.js`: configuracion de URL del backend.
+- `docs/google-apps-script-backend.gs`: backend para guardar respuestas en Google Sheets.
+- `docs/CONFIGURAR_GOOGLE_SHEETS.md`: pasos para activar el guardado automatico.
 - `docs/codex_prompt.md`: prompt recomendado para continuar el desarrollo en Codex.
 
 ## Objetivo
@@ -29,13 +32,14 @@ Medir, en formato anónimo, si anestesiólogos seleccionarían TIVA, gases, anes
 - Hospital Valdivia
 - Hospital San José Osorno
 
-## Próximo paso recomendado
+## Guardado automatico
 
-Conectar `public/index.html` a un backend real para guardar respuestas automáticamente sin mostrar resultados al participante.
+El formulario esta preparado para guardar respuestas automaticamente en Google Sheets mediante Google Apps Script. Para activarlo:
 
-Opciones:
-- Google Apps Script + Google Sheets
-- Supabase
-- Firebase
-- Backend Node.js/Express
-- Backend NestJS
+1. Crea una planilla en Google Sheets.
+2. Pega el contenido de `docs/google-apps-script-backend.gs` en Apps Script.
+3. Despliega como aplicacion web.
+4. Pega la URL `/exec` en `public/config.js`.
+5. Sube el cambio a GitHub.
+
+Instrucciones completas: `docs/CONFIGURAR_GOOGLE_SHEETS.md`.

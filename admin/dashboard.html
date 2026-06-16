@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Panel Privado Consulta TIVA vs gases</title>
+  <script src="../public/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { margin:0; font-family:Arial, Helvetica, sans-serif; background:#f4f7fb; color:#1c2430; }
@@ -14,7 +15,8 @@
     .metric { background:#f8fafc; border:1px solid #d8e0ea; border-radius:14px; padding:14px; text-align:center; }
     .metric span:first-child { display:block; color:#0f766e; font-size:30px; font-weight:800; }
     .metric span:last-child { color:#64748b; font-size:13px; }
-    textarea { width:100%; min-height:160px; box-sizing:border-box; border-radius:12px; border:1px solid #d8e0ea; padding:10px; font-family:monospace; }
+    input, textarea { width:100%; box-sizing:border-box; border-radius:12px; border:1px solid #d8e0ea; padding:10px; }
+    textarea { min-height:160px; font-family:monospace; }
     button { border:none; border-radius:12px; padding:11px 14px; font-weight:700; cursor:pointer; margin:8px 8px 8px 0; }
     .primary { background:#0f766e; color:white; }
     .secondary { background:#e2e8f0; color:#0f172a; }
@@ -35,10 +37,23 @@
 
   <main>
     <section class="card">
-      <h2>Ingreso manual de respuestas</h2>
+      <h2>Conexión con respuestas</h2>
       <p class="note">
-        Esta versión del formulario público ya no exporta ni copia datos. Para análisis real centralizado, conecte el formulario a Google Forms, Apps Script, Firebase, Supabase o una API propia.
+        El panel lee las respuestas guardadas en Google Sheets mediante Google Apps Script. La clave de administración queda guardada solo en este navegador.
       </p>
+      <label>
+        URL del backend
+        <input id="backendUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+      </label>
+      <label>
+        Clave de administración
+        <input id="adminKeyInput" type="password" placeholder="Clave definida en Apps Script">
+      </label>
+      <button class="primary" onclick="loadRemoteResponses()">Cargar respuestas</button>
+      <button class="secondary" onclick="saveConnectionSettings()">Guardar conexión</button>
+      <p class="note" id="connectionStatus"></p>
+
+      <h2>Ingreso manual de respaldo</h2>
       <textarea id="jsonInput" placeholder="Opcional: pegar respuesta JSON si se usa una versión conectada o exportada internamente..."></textarea><br>
       <button class="primary" onclick="importJSON()">Importar respuesta</button>
       <button class="secondary" onclick="exportCSV()">Exportar consolidado CSV</button>
@@ -97,6 +112,67 @@
 
     let responses = JSON.parse(localStorage.getItem("consulta_tiva_vs_gases_responses_v1") || "[]");
     let techniqueChart, barrierChart, caseChart, centerChart;
+    let jsonpCounter = 0;
+
+    document.getElementById("backendUrlInput").value = localStorage.getItem("consulta_tiva_vs_gases_backend_url") || window.SURVEY_BACKEND_URL || "";
+    document.getElementById("adminKeyInput").value = localStorage.getItem("consulta_tiva_vs_gases_admin_key") || "";
+
+    function saveConnectionSettings() {
+      const backendUrl = document.getElementById("backendUrlInput").value.trim();
+      const adminKey = document.getElementById("adminKeyInput").value.trim();
+      localStorage.setItem("consulta_tiva_vs_gases_backend_url", backendUrl);
+      localStorage.setItem("consulta_tiva_vs_gases_admin_key", adminKey);
+      document.getElementById("connectionStatus").textContent = "Conexión guardada en este navegador.";
+    }
+
+    function loadJSONP(url) {
+      return new Promise((resolve, reject) => {
+        const callbackName = `consultaTivaVsGasesCallback_${Date.now()}_${jsonpCounter++}`;
+        const script = document.createElement("script");
+        const separator = url.includes("?") ? "&" : "?";
+
+        window[callbackName] = data => {
+          delete window[callbackName];
+          script.remove();
+          resolve(data);
+        };
+
+        script.onerror = () => {
+          delete window[callbackName];
+          script.remove();
+          reject(new Error("No se pudo conectar con el backend."));
+        };
+
+        script.src = `${url}${separator}callback=${encodeURIComponent(callbackName)}`;
+        document.body.appendChild(script);
+      });
+    }
+
+    async function loadRemoteResponses() {
+      const backendUrl = document.getElementById("backendUrlInput").value.trim();
+      const adminKey = document.getElementById("adminKeyInput").value.trim();
+      const status = document.getElementById("connectionStatus");
+
+      if (!backendUrl || !adminKey) {
+        status.textContent = "Ingrese la URL del backend y la clave de administración.";
+        return;
+      }
+
+      saveConnectionSettings();
+      status.textContent = "Cargando respuestas...";
+
+      try {
+        const url = `${backendUrl}?action=list&admin_key=${encodeURIComponent(adminKey)}`;
+        const data = await loadJSONP(url);
+        if (!data.ok) throw new Error(data.error || "El backend rechazó la solicitud.");
+        responses = data.responses || [];
+        localStorage.setItem("consulta_tiva_vs_gases_responses_v1", JSON.stringify(responses));
+        status.textContent = `Respuestas cargadas: ${responses.length}.`;
+        updateDashboard();
+      } catch (error) {
+        status.textContent = error.message || "No se pudieron cargar las respuestas.";
+      }
+    }
 
     function importJSON() {
       const raw = document.getElementById("jsonInput").value.trim();

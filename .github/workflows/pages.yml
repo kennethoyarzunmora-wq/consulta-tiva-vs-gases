@@ -27,10 +27,17 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Prepare site
+        shell: bash
+        run: |
+          mkdir -p dist/admin dist/public
+          cp -R public/. dist/
+          cp -R admin/. dist/admin/
+          cp public/config.js dist/public/config.js
       - name: Upload public site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: public
+          path: dist
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
