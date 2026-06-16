@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel Privado Consulta TIVA vs gases</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { margin:0; font-family:Arial, Helvetica, sans-serif; background:#f4f7fb; color:#1c2430; }
+    header { background:linear-gradient(135deg,#0f766e,#134e4a); color:white; padding:26px 18px; text-align:center; }
+    main { max-width:1180px; margin:22px auto; padding:0 16px 40px; }
+    .card { background:white; border:1px solid #d8e0ea; border-radius:16px; padding:20px; margin-bottom:18px; box-shadow:0 8px 20px rgba(15,23,42,.06); }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+    .metric { background:#f8fafc; border:1px solid #d8e0ea; border-radius:14px; padding:14px; text-align:center; }
+    .metric span:first-child { display:block; color:#0f766e; font-size:30px; font-weight:800; }
+    .metric span:last-child { color:#64748b; font-size:13px; }
+    textarea { width:100%; min-height:160px; box-sizing:border-box; border-radius:12px; border:1px solid #d8e0ea; padding:10px; font-family:monospace; }
+    button { border:none; border-radius:12px; padding:11px 14px; font-weight:700; cursor:pointer; margin:8px 8px 8px 0; }
+    .primary { background:#0f766e; color:white; }
+    .secondary { background:#e2e8f0; color:#0f172a; }
+    .danger { background:#fee2e2; color:#b91c1c; }
+    canvas { margin:16px 0 28px; max-height:330px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+    th, td { padding:8px; border-bottom:1px solid #d8e0ea; text-align:left; vertical-align:top; }
+    th { background:#f8fafc; }
+    .note { color:#64748b; font-size:13px; line-height:1.45; }
+    @media (max-width:850px) { .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Panel Privado Consulta TIVA vs gases</h1>
+    <p>Visualización privada de resultados agregados</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Ingreso manual de respuestas</h2>
+      <p class="note">
+        Esta versión del formulario público ya no exporta ni copia datos. Para análisis real centralizado, conecte el formulario a Google Forms, Apps Script, Firebase, Supabase o una API propia.
+      </p>
+      <textarea id="jsonInput" placeholder="Opcional: pegar respuesta JSON si se usa una versión conectada o exportada internamente..."></textarea><br>
+      <button class="primary" onclick="importJSON()">Importar respuesta</button>
+      <button class="secondary" onclick="exportCSV()">Exportar consolidado CSV</button>
+      <button class="danger" onclick="resetAll()">Borrar base local</button>
+    </section>
+
+    <section class="card">
+      <h2>Resumen</h2>
+      <div class="grid">
+        <div class="metric"><span id="totalResponses">0</span><span>Respuestas anónimas</span></div>
+        <div class="metric"><span id="progress">0%</span><span>Avance muestra objetivo 10</span></div>
+        <div class="metric"><span id="tivaRate">0%</span><span>Selección total de TIVA</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <canvas id="techniqueChart"></canvas>
+      <canvas id="barrierChart"></canvas>
+      <canvas id="caseChart"></canvas>
+      <canvas id="centerChart"></canvas>
+    </section>
+
+    <section class="card">
+      <h2>Base consolidada</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID anónimo</th>
+            <th>Fecha</th>
+            <th>Centro</th>
+            <th>Caso</th>
+            <th>Técnica</th>
+            <th>Barrera</th>
+          </tr>
+        </thead>
+        <tbody id="dataTable"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const TARGET_SAMPLE = 10;
+    const techniques = ["TIVA", "Gases", "Regional", "Combinada"];
+    const centers = ["Dipreca", "Tabancura", "Meds", "Hospital Uchile", "Hospital Valdivia", "Hospital San José Osorno"];
+    const barriers = [
+      "Tiempo quirúrgico", "Falta de neuromonitoreo", "Costo", "Facilidad de técnica inhalatoria",
+      "Desconocimiento / falta de entrenamiento", "Disponibilidad de equipos", "No percibe beneficio clínico"
+    ];
+    const caseLabels = [
+      "Caso 1: Neurocirugía >4 h",
+      "Caso 2: Plástica >2 h",
+      "Caso 3: Oncológica general",
+      "Caso 4: Bariátrica ≤2 h",
+      "Caso 5: Rodilla/regional"
+    ];
+
+    let responses = JSON.parse(localStorage.getItem("consulta_tiva_vs_gases_responses_v1") || "[]");
+    let techniqueChart, barrierChart, caseChart, centerChart;
+
+    function importJSON() {
+      const raw = document.getElementById("jsonInput").value.trim();
+      if (!raw) return alert("Pegue una respuesta JSON.");
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed.id_anonimo || !parsed.centro || !parsed.respuestas || parsed.respuestas.length !== 5) {
+          return alert("Formato no válido. Debe incluir id_anonimo, centro y 5 respuestas.");
+        }
+        if (responses.some(r => r.id_anonimo === parsed.id_anonimo)) return alert("Esta respuesta ya fue importada.");
+        responses.push(parsed);
+        localStorage.setItem("consulta_tiva_vs_gases_responses_v1", JSON.stringify(responses));
+        document.getElementById("jsonInput").value = "";
+        updateDashboard();
+      } catch (e) {
+        alert("JSON inválido. Revise que copió el bloque completo.");
+      }
+    }
+
+    function countTechniques() {
+      const counts = Object.fromEntries(techniques.map(t => [t, 0]));
+      responses.forEach(r => r.respuestas.forEach(a => counts[a.tecnica]++));
+      return counts;
+    }
+
+    function countCenters() {
+      const counts = Object.fromEntries(centers.map(c => [c, 0]));
+      responses.forEach(r => {
+        if (!counts[r.centro]) counts[r.centro] = 0;
+        counts[r.centro]++;
+      });
+      return counts;
+    }
+
+    function countBarriers() {
+      const counts = Object.fromEntries(barriers.map(b => [b, 0]));
+      responses.forEach(r => r.respuestas.forEach(a => { if (a.barrera) counts[a.barrera]++; }));
+      return counts;
+    }
+
+    function countTivaByCase() {
+      return [0,1,2,3,4].map(idx => {
+        let count = 0;
+        responses.forEach(r => {
+          if (r.respuestas[idx] && r.respuestas[idx].tecnica === "TIVA") count++;
+        });
+        return count;
+      });
+    }
+
+    function makeChart(ctx, type, labels, data, title) {
+      return new Chart(ctx, {
+        type,
+        data: { labels, datasets: [{ label: title, data, borderWidth: 1 }] },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: type === "pie" }, title: { display: true, text: title } },
+          scales: type === "pie" ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+    }
+
+    function updateDashboard() {
+      const techniqueCounts = countTechniques();
+      const barrierCounts = countBarriers();
+      const tivaByCase = countTivaByCase();
+      const centerCounts = countCenters();
+      const totalResponses = responses.length;
+      const totalDecisions = totalResponses * 5;
+      const tivaTotal = techniqueCounts["TIVA"] || 0;
+
+      document.getElementById("totalResponses").textContent = totalResponses;
+      document.getElementById("progress").textContent = Math.min(100, Math.round((totalResponses / TARGET_SAMPLE) * 100)) + "%";
+      document.getElementById("tivaRate").textContent = totalDecisions ? Math.round((tivaTotal / totalDecisions) * 100) + "%" : "0%";
+
+      if (techniqueChart) techniqueChart.destroy();
+      if (barrierChart) barrierChart.destroy();
+      if (caseChart) caseChart.destroy();
+      if (centerChart) centerChart.destroy();
+
+      techniqueChart = makeChart(document.getElementById("techniqueChart"), "pie", Object.keys(techniqueCounts), Object.values(techniqueCounts), "Distribución de técnica seleccionada");
+      barrierChart = makeChart(document.getElementById("barrierChart"), "bar", Object.keys(barrierCounts), Object.values(barrierCounts), "Barreras cuando no se selecciona TIVA");
+      caseChart = makeChart(document.getElementById("caseChart"), "bar", caseLabels, tivaByCase, "Selección de TIVA por caso clínico");
+      centerChart = makeChart(document.getElementById("centerChart"), "bar", Object.keys(centerCounts), Object.values(centerCounts), "Respuestas por centro");
+
+      renderTable();
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("dataTable");
+      tbody.innerHTML = "";
+      responses.forEach(r => {
+        r.respuestas.forEach((a, idx) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${r.id_anonimo}</td><td>${r.fecha}</td><td>${r.centro || ""}</td><td>${caseLabels[idx] || a.caso}</td><td>${a.tecnica}</td><td>${a.barrera || ""}</td>`;
+          tbody.appendChild(tr);
+        });
+      });
+    }
+
+    function exportCSV() {
+      const rows = [["id_anonimo", "fecha", "centro", "caso", "descripcion", "tecnica", "barrera"]];
+      responses.forEach(r => r.respuestas.forEach((a, idx) => rows.push([r.id_anonimo, r.fecha, r.centro || "", caseLabels[idx] || a.caso, a.descripcion, a.tecnica, a.barrera || ""])));
+      const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "consolidado_consulta_tiva_vs_gases.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function resetAll() {
+      if (!confirm("¿Seguro que desea borrar la base local del panel privado?")) return;
+      responses = [];
+      localStorage.removeItem("consulta_tiva_vs_gases_responses_v1");
+      updateDashboard();
+    }
+
+    updateDashboard();
+  </script>
+</body>
+</html>

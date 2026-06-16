@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consulta TIVA vs gases</title>
+  <style>
+    :root { --bg:#f4f7fb; --card:#fff; --text:#1c2430; --muted:#64748b; --primary:#0f766e; --primary-dark:#115e59; --border:#d8e0ea; --danger:#b91c1c; --ok:#15803d; }
+    body { margin:0; font-family:Arial, Helvetica, sans-serif; background:var(--bg); color:var(--text); }
+    header { background:linear-gradient(135deg,#0f766e,#134e4a); color:white; padding:28px 18px; text-align:center; }
+    header h1 { margin:0 0 8px; font-size:26px; }
+    header p { margin:0; opacity:.92; font-size:15px; }
+    main { max-width:820px; margin:24px auto; padding:0 16px 40px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:22px; box-shadow:0 8px 20px rgba(15,23,42,.06); }
+    h2 { margin-top:0; font-size:21px; }
+    .intro, .note { color:var(--muted); font-size:14px; line-height:1.5; }
+    .note { font-size:13px; margin-top:12px; }
+    .field-block, .case { border:1px solid var(--border); border-radius:14px; padding:14px; margin:14px 0; background:#fbfdff; }
+    .field-block { background:#f8fafc; }
+    .case strong, .field-block strong { display:block; margin-bottom:8px; line-height:1.4; }
+    label { display:block; margin:8px 0; cursor:pointer; }
+    select { width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:white; margin-top:8px; box-sizing:border-box; }
+    .barrier-select { display:none; }
+    button { border:none; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer; margin-top:12px; }
+    .primary { background:var(--primary); color:white; }
+    .primary:hover { background:var(--primary-dark); }
+    .secondary { background:#e2e8f0; color:#0f172a; margin-left:8px; }
+    .alert { color:var(--danger); font-size:14px; margin-top:8px; display:none; }
+    .success {
+      display:none;
+      margin-top:16px;
+      border:1px solid #bbf7d0;
+      background:#f0fdf4;
+      color:#14532d;
+      border-radius:16px;
+      padding:24px;
+      line-height:1.55;
+      text-align:center;
+    }
+    .success h2 { color:var(--ok); margin-bottom:8px; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Consulta TIVA vs gases</h1>
+    <p>Elección de técnica anestésica por escenario clínico</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <div id="formBlock">
+        <h2>Cuestionario clínico</h2>
+        <p class="intro">
+          Esta consulta es anónima. No solicita nombre ni correo. El objetivo es comparar la selección de TIVA, gases, anestesia regional o técnica combinada, e identificar las principales barreras cuando no se elige TIVA. Tiempo estimado: menos de 2 minutos.
+        </p>
+
+        <form id="surveyForm">
+          <div class="field-block">
+            <strong>Centro</strong>
+            <select id="centerSelect" required>
+              <option value="">Seleccione centro</option>
+              <option value="Dipreca">Dipreca</option>
+              <option value="Tabancura">Tabancura</option>
+              <option value="Meds">Meds</option>
+              <option value="Hospital Uchile">Hospital Uchile</option>
+              <option value="Hospital Valdivia">Hospital Valdivia</option>
+              <option value="Hospital San José Osorno">Hospital San José Osorno</option>
+            </select>
+          </div>
+
+          <div id="cases"></div>
+          <div class="alert" id="formAlert">Debe responder los 5 casos clínicos.</div>
+          <button type="submit" class="primary">Enviar encuesta</button>
+          <button type="button" class="secondary" onclick="clearForm()">Limpiar</button>
+        </form>
+
+        <p class="note">
+          Nota: este formulario no muestra resultados al participante.
+        </p>
+      </div>
+
+      <div class="success" id="successMessage">
+        <h2>Muchas gracias</h2>
+        <p>Su respuesta fue registrada correctamente.</p>
+        <p>La información será utilizada solo para análisis agregado de preferencias anestésicas y barreras clínicas por escenario.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const clinicalCases = [
+      "Neurocirugía electiva mayor a 4 horas con necesidad de estabilidad hemodinámica.",
+      "Cirugía plástica de mayor a 2 horas.",
+      "Cirugía oncológica en general.",
+      "Cirugía bariátrica igual o menor a 2 horas.",
+      "Artroplastía total de rodilla con posibilidad de técnica regional."
+    ];
+
+    const techniques = ["TIVA", "Gases", "Regional", "Combinada"];
+
+    const barriers = [
+      "Tiempo quirúrgico",
+      "Falta de neuromonitoreo",
+      "Costo",
+      "Facilidad de técnica inhalatoria",
+      "Desconocimiento / falta de entrenamiento",
+      "Disponibilidad de equipos",
+      "No percibe beneficio clínico"
+    ];
+
+    const casesContainer = document.getElementById("cases");
+
+    clinicalCases.forEach((caseText, idx) => {
+      const div = document.createElement("div");
+      div.className = "case";
+      div.innerHTML = `
+        <strong>Caso ${idx + 1}: ${caseText}</strong>
+        ${techniques.map(t => `
+          <label>
+            <input type="radio" name="case_${idx}" value="${t}" onchange="toggleBarrier(${idx})">
+            ${t}
+          </label>
+        `).join("")}
+        <select class="barrier-select" id="barrier_${idx}">
+          <option value="">Si no selecciona TIVA, indique el principal motivo</option>
+          ${barriers.map(b => `<option value="${b}">${b}</option>`).join("")}
+        </select>
+      `;
+      casesContainer.appendChild(div);
+    });
+
+    function toggleBarrier(idx) {
+      const selected = document.querySelector(`input[name="case_${idx}"]:checked`);
+      const select = document.getElementById(`barrier_${idx}`);
+      if (selected && selected.value !== "TIVA") {
+        select.style.display = "block";
+        select.required = true;
+      } else {
+        select.style.display = "none";
+        select.required = false;
+        select.value = "";
+      }
+    }
+
+    document.getElementById("surveyForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const alert = document.getElementById("formAlert");
+      const center = document.getElementById("centerSelect").value;
+
+      if (!center) {
+        alert.textContent = "Debe seleccionar un centro.";
+        alert.style.display = "block";
+        return;
+      }
+
+      for (let i = 0; i < clinicalCases.length; i++) {
+        const selected = document.querySelector(`input[name="case_${i}"]:checked`);
+        const barrier = document.getElementById(`barrier_${i}`).value;
+
+        if (!selected) {
+          alert.textContent = "Debe responder los 5 casos clínicos.";
+          alert.style.display = "block";
+          return;
+        }
+
+        if (selected.value !== "TIVA" && !barrier) {
+          alert.textContent = "Cuando no se selecciona TIVA, debe indicar el motivo principal.";
+          alert.style.display = "block";
+          return;
+        }
+      }
+
+      alert.style.display = "none";
+      document.getElementById("formBlock").classList.add("hidden");
+      document.getElementById("successMessage").style.display = "block";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    function clearForm() {
+      document.getElementById("surveyForm").reset();
+      for (let i = 0; i < clinicalCases.length; i++) {
+        document.getElementById(`barrier_${i}`).style.display = "none";
+      }
+      document.getElementById("formAlert").style.display = "none";
+    }
+  </script>
+</body>
+</html>
