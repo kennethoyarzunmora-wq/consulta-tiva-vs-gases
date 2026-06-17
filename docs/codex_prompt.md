@@ -12,7 +12,7 @@ Requerimientos:
    - No solicitar nombre.
    - No solicitar correo.
    - No mostrar resultados al participante.
-   - No permitir descargar CSV ni copiar datos al participante.
+   - No permitir descargar datos ni copiar datos al participante.
    - Al enviar, mostrar solo un mensaje de “Muchas gracias”.
 
 2. Campos de la encuesta:
@@ -69,7 +69,7 @@ Requerimientos:
    - Gráfico de selección TIVA por caso clínico.
    - Gráfico de respuestas por centro.
    - Tabla consolidada.
-   - Exportar CSV solo desde panel privado.
+   - Exportar base Excel para tabla dinámica solo desde panel privado.
 
 8. Seguridad:
    - No exponer claves secretas en frontend.
@@ -89,6 +89,6 @@ Requerimientos:
    Primero crear una versión mínima funcional:
    - formulario público guarda datos en backend
    - panel privado lee datos y grafica resultados
-   - exporta CSV desde panel privado
+   - exporta base Excel para tabla dinámica desde panel privado
 
 No cambies el diseño visual salvo que sea necesario para mejorar responsividad o legibilidad.

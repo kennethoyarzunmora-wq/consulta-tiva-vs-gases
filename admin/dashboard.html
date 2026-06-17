@@ -57,7 +57,7 @@
       <h2>Ingreso manual de respaldo</h2>
       <textarea id="jsonInput" placeholder="Opcional: pegar respuesta JSON si se usa una versión conectada o exportada internamente..."></textarea><br>
       <button class="primary" onclick="importJSON()">Importar respuesta</button>
-      <button class="secondary" onclick="exportCSV()">Exportar consolidado CSV</button>
+      <button class="secondary" onclick="exportExcelForPivot()">Exportar Excel para tabla dinámica</button>
       <button class="danger" onclick="resetAll()">Borrar base local</button>
     </section>
 
@@ -113,7 +113,6 @@
 
     let responses = JSON.parse(localStorage.getItem("consulta_tiva_vs_gases_responses_v1") || "[]");
     let techniqueChart, barrierChart, caseChart, centerChart;
-    let jsonpCounter = 0;
 
     const configuredBackendUrl = window.SURVEY_BACKEND_URL || "";
     const savedBackendUrl = localStorage.getItem("consulta_tiva_vs_gases_backend_url") || "";
@@ -138,29 +137,6 @@
       document.getElementById("connectionStatus").textContent = "Conexión guardada en este navegador.";
     }
 
-    function loadJSONP(url) {
-      return new Promise((resolve, reject) => {
-        const callbackName = `consultaTivaVsGasesCallback_${Date.now()}_${jsonpCounter++}`;
-        const script = document.createElement("script");
-        const separator = url.includes("?") ? "&" : "?";
-
-        window[callbackName] = data => {
-          delete window[callbackName];
-          script.remove();
-          resolve(data);
-        };
-
-        script.onerror = () => {
-          delete window[callbackName];
-          script.remove();
-          reject(new Error("No se pudo conectar con el backend."));
-        };
-
-        script.src = `${url}${separator}callback=${encodeURIComponent(callbackName)}`;
-        document.body.appendChild(script);
-      });
-    }
-
     async function loadRemoteResponses() {
       const backendUrl = normalizeBackendUrl(document.getElementById("backendUrlInput").value || configuredBackendUrl);
       const adminKey = document.getElementById("adminKeyInput").value.trim();
@@ -176,14 +152,16 @@
 
       try {
         const url = `${backendUrl}?action=list&admin_key=${encodeURIComponent(adminKey)}&t=${Date.now()}`;
-        const data = await loadJSONP(url);
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error(`El backend respondio con estado ${response.status}.`);
+        const data = await response.json();
         if (!data.ok) throw new Error(data.error || "El backend rechazó la solicitud.");
         responses = data.responses || [];
         localStorage.setItem("consulta_tiva_vs_gases_responses_v1", JSON.stringify(responses));
         status.textContent = `Respuestas cargadas: ${responses.length}.`;
         updateDashboard();
       } catch (error) {
-        status.textContent = error.message || "No se pudieron cargar las respuestas.";
+        status.textContent = `${error.message || "No se pudieron cargar las respuestas."} Revise la URL, la clave y que el despliegue de Apps Script sea publico.`;
       }
     }
 
@@ -286,15 +264,58 @@
       });
     }
 
-    function exportCSV() {
-      const rows = [["id_anonimo", "fecha", "centro", "caso", "descripcion", "tecnica", "barrera"]];
-      responses.forEach(r => r.respuestas.forEach((a, idx) => rows.push([r.id_anonimo, r.fecha, r.centro || "", caseLabels[idx] || a.caso, a.descripcion, a.tecnica, a.barrera || ""])));
-      const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    function getFlatRows() {
+      return responses.flatMap(r => r.respuestas.map((a, idx) => ({
+        id_anonimo: r.id_anonimo,
+        fecha: r.fecha,
+        centro: r.centro || "",
+        caso: caseLabels[idx] || a.caso,
+        descripcion: a.descripcion || "",
+        tecnica: a.tecnica,
+        barrera: a.barrera || ""
+      })));
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function exportExcelForPivot() {
+      const rows = getFlatRows();
+      if (!rows.length) {
+        alert("No hay respuestas cargadas para exportar.");
+        return;
+      }
+
+      const headers = ["id_anonimo", "fecha", "centro", "caso", "descripcion", "tecnica", "barrera"];
+      const tableRows = rows.map(row => `
+        <tr>
+          ${headers.map(header => `<td>${escapeHtml(row[header])}</td>`).join("")}
+        </tr>
+      `).join("");
+      const workbook = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="UTF-8">
+          <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Base</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+        </head>
+        <body>
+          <table>
+            <thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </body>
+        </html>
+      `;
+      const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "consolidado_consulta_tiva_vs_gases.csv";
+      a.download = "base_consulta_tiva_vs_gases_tabla_dinamica.xls";
       a.click();
       URL.revokeObjectURL(url);
     }

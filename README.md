@@ -43,3 +43,7 @@ El formulario esta preparado para guardar respuestas automaticamente en Google S
 5. Sube el cambio a GitHub.
 
 Instrucciones completas: `docs/CONFIGURAR_GOOGLE_SHEETS.md`.
+
+## Exportacion
+
+El panel privado exporta una base Excel `.xls` lista para crear tabla dinamica desde Excel. No expone descarga CSV.
