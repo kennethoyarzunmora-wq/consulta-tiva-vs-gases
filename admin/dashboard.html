@@ -51,6 +51,7 @@
       </label>
       <button class="primary" onclick="loadRemoteResponses()">Cargar respuestas</button>
       <button class="secondary" onclick="saveConnectionSettings()">Guardar conexión</button>
+      <button class="secondary" onclick="useConfiguredBackend()">Usar backend configurado</button>
       <p class="note" id="connectionStatus"></p>
 
       <h2>Ingreso manual de respaldo</h2>
@@ -114,12 +115,24 @@
     let techniqueChart, barrierChart, caseChart, centerChart;
     let jsonpCounter = 0;
 
-    document.getElementById("backendUrlInput").value = localStorage.getItem("consulta_tiva_vs_gases_backend_url") || window.SURVEY_BACKEND_URL || "";
+    const configuredBackendUrl = window.SURVEY_BACKEND_URL || "";
+    const savedBackendUrl = localStorage.getItem("consulta_tiva_vs_gases_backend_url") || "";
+    document.getElementById("backendUrlInput").value = savedBackendUrl || configuredBackendUrl;
     document.getElementById("adminKeyInput").value = localStorage.getItem("consulta_tiva_vs_gases_admin_key") || "";
 
+    function normalizeBackendUrl(value) {
+      return value.trim().replace(/\?.*$/, "");
+    }
+
+    function useConfiguredBackend() {
+      document.getElementById("backendUrlInput").value = configuredBackendUrl;
+      saveConnectionSettings();
+    }
+
     function saveConnectionSettings() {
-      const backendUrl = document.getElementById("backendUrlInput").value.trim();
+      const backendUrl = normalizeBackendUrl(document.getElementById("backendUrlInput").value);
       const adminKey = document.getElementById("adminKeyInput").value.trim();
+      document.getElementById("backendUrlInput").value = backendUrl;
       localStorage.setItem("consulta_tiva_vs_gases_backend_url", backendUrl);
       localStorage.setItem("consulta_tiva_vs_gases_admin_key", adminKey);
       document.getElementById("connectionStatus").textContent = "Conexión guardada en este navegador.";
@@ -149,7 +162,7 @@
     }
 
     async function loadRemoteResponses() {
-      const backendUrl = document.getElementById("backendUrlInput").value.trim();
+      const backendUrl = normalizeBackendUrl(document.getElementById("backendUrlInput").value || configuredBackendUrl);
       const adminKey = document.getElementById("adminKeyInput").value.trim();
       const status = document.getElementById("connectionStatus");
 
@@ -162,7 +175,7 @@
       status.textContent = "Cargando respuestas...";
 
       try {
-        const url = `${backendUrl}?action=list&admin_key=${encodeURIComponent(adminKey)}`;
+        const url = `${backendUrl}?action=list&admin_key=${encodeURIComponent(adminKey)}&t=${Date.now()}`;
         const data = await loadJSONP(url);
         if (!data.ok) throw new Error(data.error || "El backend rechazó la solicitud.");
         responses = data.responses || [];
